@@ -24,6 +24,75 @@ import java.util.ArrayList;
 import java.util.List;
 
 
+// The main class
+public class Game {
+
+  public static void main(String[] args) throws Exception {
+
+
+    // DISPLAY MANAGEMENT
+    Display.setDisplayMode(new DisplayMode(Config.WIDTH, Config.HEIGHT));
+    Display.create(new PixelFormat(), new ContextAttribs(3, 2).withForwardCompatible(true).withProfileCore(true));
+    Display.setTitle(Config.TITLE);
+
+    GL11.glViewport(0, 0, Config.WIDTH, Config.HEIGHT);
+
+
+    // Shader loading
+    Shader s = Shaders.color_gradient;
+
+
+    // Geometry startup
+    Model model = modelMake(Data.vertices2, Data.indices);
+
+
+    while (!Display.isCloseRequested()) {
+      // TODO: get input
+      // TODO: run game logic
+
+      // Prepare rendering
+      GL11.glClearColor(1, 0, 1, 1); // RGBA
+      GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+
+      // Render models
+      // TODO: put shaders and models together
+      Shader.use(s);
+      modelRender(model);
+      Shader.stop();
+
+      // Display sync
+      Display.sync(Config.FPS_CAP);
+      Display.update();
+    }
+
+    // Cleanup
+    GLObjects.freeAll();
+    Display.destroy();
+  }
+
+  static Model modelMake(float[] positions, int[] indices) {
+    int vaoId = GLObjects.allocVao();
+    GLUtil.vaoBind(vaoId);
+    GLUtil.bindIndices(indices);
+    GLUtil.attributeStore(K.attr0, positions);
+    GLUtil.vaoUnbind();
+    Model m = new Model();
+    m.vaoId = vaoId;
+    m.vertexCount = indices.length;
+    return m;
+  }
+
+  static void modelRender(Model model) {
+    GLUtil.vaoBind(model.vaoId);
+    GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
+    //GL11.glDrawArrays(GL11.GL_TRIANGLES, K.offset0, model.vertexCount); // No indices rendering
+    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0); // Indices rendering
+    GLUtil.vertexAttribArrayUnbind(K.attr0);
+    GLUtil.vaoUnbind();
+  }
+}
+
+
 // Useful constants to avoid hardcoding mystical values in the middle of even more mystical argument lists.
 interface K {
 
@@ -249,70 +318,3 @@ interface Shaders {
 }
 
 
-// The main class
-public class Game {
-
-  public static void main(String[] args) throws Exception {
-
-
-    // DISPLAY MANAGEMENT
-    Display.setDisplayMode(new DisplayMode(Config.WIDTH, Config.HEIGHT));
-    Display.create(new PixelFormat(), new ContextAttribs(3, 2).withForwardCompatible(true).withProfileCore(true));
-    Display.setTitle(Config.TITLE);
-
-    GL11.glViewport(0, 0, Config.WIDTH, Config.HEIGHT);
-
-
-    // Shader loading
-    Shader s = Shaders.color_gradient;
-
-
-    // Geometry startup
-    Model model = modelMake(Data.vertices2, Data.indices);
-
-
-    while (!Display.isCloseRequested()) {
-      // TODO: get input
-      // TODO: run game logic
-
-      // Prepare rendering
-      GL11.glClearColor(1, 0, 1, 1); // RGBA
-      GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-
-      // Render models
-      // TODO: put shaders and models together
-      Shader.use(s);
-      modelRender(model);
-      Shader.stop();
-
-      // Display sync
-      Display.sync(Config.FPS_CAP);
-      Display.update();
-    }
-
-    // Cleanup
-    GLObjects.freeAll();
-    Display.destroy();
-  }
-
-  static Model modelMake(float[] positions, int[] indices) {
-    int vaoId = GLObjects.allocVao();
-    GLUtil.vaoBind(vaoId);
-    GLUtil.bindIndices(indices);
-    GLUtil.attributeStore(K.attr0, positions);
-    GLUtil.vaoUnbind();
-    Model m = new Model();
-    m.vaoId = vaoId;
-    m.vertexCount = indices.length;
-    return m;
-  }
-
-  static void modelRender(Model model) {
-    GLUtil.vaoBind(model.vaoId);
-    GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
-    //GL11.glDrawArrays(GL11.GL_TRIANGLES, K.offset0, model.vertexCount); // No indices rendering
-    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0); // Indices rendering
-    GLUtil.vertexAttribArrayUnbind(K.attr0);
-    GLUtil.vaoUnbind();
-  }
-}
