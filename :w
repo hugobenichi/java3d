@@ -15,9 +15,9 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.PixelFormat;
 
+import java.io.StandardCharsets;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -28,11 +28,13 @@ import java.util.List;
 interface K {
 
   int offset0 = 0;
+
   int attr0 = 0;
+
   int vertex_per_triangle = 3;
+
   int gl_null = 0;
 }
-
 
 // Static functions for reducing GL syntax bloat.
 class GLUtil {
@@ -90,32 +92,6 @@ class GLUtil {
   }
 }
 
-
-// Tracks VBO and VAO ids
-class GLObjects {
-  // TODO: tracks ids more efficiently without boxing ids !
-  static List<Integer> vaos = new ArrayList<Integer>();
-  static List<Integer> vbos = new ArrayList<Integer>();
-
-  static int allocVao() {
-    int id = GL30.glGenVertexArrays();
-    vaos.add(id);
-    return id;
-  }
-
-  static int allocVbo() {
-    int id = GL15.glGenBuffers();
-    vbos.add(id);
-    return id;
-  }
-
-  static void freeAll() {
-    vaos.forEach(GL30::glDeleteVertexArrays);
-    vbos.forEach(GL15::glDeleteBuffers);
-  }
-}
-
-
 // Static function for managing array of ints/floats
 class BufferUtil {
   // TODO: consider pooling buffers
@@ -135,19 +111,6 @@ class BufferUtil {
   }
 }
 
-
-class IOUtil {
-  static String readFile(String path) {
-    try {
-      byte[] data = Files.readAllBytes(Paths.get(path));
-      return new String(data, StandardCharsets.UTF_8);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-  }
-}
-
-
 // Game configs
 interface Config {
   int WIDTH           = 1280;
@@ -155,7 +118,6 @@ interface Config {
   int FPS_CAP         = 60;
   String TITLE        = "Our First Display";
 }
-
 
 // Geometry data
 interface Data {
@@ -183,71 +145,38 @@ interface Data {
   };
 }
 
-
 // Used to track Vertex Array Object data.
 class Model {
   int vaoId;
   int vertexCount;
 }
 
-
 class Shader {
-  int programId;
+  int shaderId;
   int vertexId;
   int fragmentId;
 
-  static Shader make(String vertexShader, String fragmentShader) {
-    Shader s = new Shader();
-    s.vertexId = loadShader(vertexShader, GL20.GL_VERTEX_SHADER);
-    s.fragmentId = loadShader(fragmentShader, GL20.GL_FRAGMENT_SHADER);
-    s.programId = GL20.glCreateProgram();
-    GL20.glAttachShader(s.programId, s.vertexId);
-    GL20.glAttachShader(s.programId, s.fragmentId);
-    GL20.glLinkProgram(s.programId);
-    GL20.glValidateProgram(s.programId);
-    return s;
-  }
+  enum ShaderType {
+    VERTEX(GL20.GL_VERTEX_SHADER);
+    FRAGMENT(GL20.GL_FRAGMENT_SHADER);
 
-  static int loadShader(String filepath, int type) {
-    String source = IOUtil.readFile(filepath);
-    int id = GL20.glCreateShader(type);
-    GL20.glShaderSource(id, source);
-    GL20.glCompileShader(id);
-    if (GL20.glGetShaderi(id, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
-      throw new RuntimeException(String.format("Could not compiler shader %s: %s", filepath, GL20.glGetShaderInfoLog(id, 500)));
+    int shaderType
+    ShaderType(int t) {
+      shaderType = t;
     }
-    return id;
   }
 
-  void bindAttribute(int attrIndex, String variable) {
-    GL20.glBindAttribLocation(programId, attrIndex, variable);
-  }
-
-  void free() {
-    GL20.glDetachShader(programId, vertexId);
-    GL20.glDetachShader(programId, fragmentId);
-    GL20.glDeleteShader(vertexId);
-    GL20.glDeleteShader(fragmentId);
-    GL20.glDeleteShader(programId);
-  }
-
-  static void use(Shader s) {
-    GL20.glUseProgram(s.programId);
-  }
-
-  static void stop() {
-    GL20.glUseProgram(0);
-  }
-
+  static Shader load(String filepath, ShaderType t) {
+    String source = IOUtil.readFile(filepath);
+		int id = GL20.glCreateShader(t.shaderType);
+		GL20.glShaderSource(id, source);
+		GL20.glCompileShader(id);
+		if (GL20.glGetShaderi(id, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
+      throw new RuntimeException(String.format("Could not compiler shader %s: %s", filepath, GL20.glGetShaderInfoLog(id, 500)));
+		}
+		return id;
+	}
 }
-
-
-interface Shaders {
-
-  Shader color_gradient = Shader.make("./src/vertex_shader", "./src/fragment_shader");
-
-}
-
 
 // The main class
 public class Game {
@@ -263,10 +192,6 @@ public class Game {
     GL11.glViewport(0, 0, Config.WIDTH, Config.HEIGHT);
 
 
-    // Shader loading
-    Shader s = Shaders.color_gradient;
-
-
     // Geometry startup
     Model model = modelMake(Data.vertices2, Data.indices);
 
@@ -280,15 +205,13 @@ public class Game {
       GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
       // Render models
-      // TODO: put shaders and models together
-      Shader.use(s);
       modelRender(model);
-      Shader.stop();
 
       // Display sync
       Display.sync(Config.FPS_CAP);
       Display.update();
     }
+
 
     // Cleanup
     GLObjects.freeAll();
@@ -314,5 +237,37 @@ public class Game {
     GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0); // Indices rendering
     GLUtil.vertexAttribArrayUnbind(K.attr0);
     GLUtil.vaoUnbind();
+  }
+}
+
+
+// Tracks VBO and VAO ids
+class GLObjects {
+  // TODO: tracks ids more efficiently without boxing ids !
+  static List<Integer> vaos = new ArrayList<Integer>();
+  static List<Integer> vbos = new ArrayList<Integer>();
+
+  static int allocVao() {
+    int id = GL30.glGenVertexArrays();
+    vaos.add(id);
+    return id;
+  }
+
+  static int allocVbo() {
+    int id = GL15.glGenBuffers();
+    vbos.add(id);
+    return id;
+  }
+
+  static void freeAll() {
+    vaos.forEach(GL30::glDeleteVertexArrays);
+    vbos.forEach(GL15::glDeleteBuffers);
+  }
+}
+
+class IOUtil {
+  static String readFile(String path) {
+    byte[] data = Files.readAllBytes(Paths.get(path));
+    return new String(data, StandardCharsets.UTF_8);
   }
 }
