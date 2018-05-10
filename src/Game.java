@@ -10,6 +10,8 @@ import org.lwjgl.opengl.ContextAttribs;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.DisplayMode;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -17,6 +19,7 @@ import org.lwjgl.opengl.PixelFormat;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -41,9 +44,12 @@ public class Game {
     // Shader loading
     Shader s = Shaders.color_gradient;
 
+    // Texture loading
+    Texture tex = Textures.test_texture;
 
     // Geometry startup
-    Model model = modelMake(Data.vertices2, Data.indices);
+    // TODO: Model should store the texture, and maybe the shader too.
+    Model model = modelMake(Data.vertices, Data.indices, Data.tex_uvs);
 
 
     while (!Display.isCloseRequested()) {
@@ -57,7 +63,7 @@ public class Game {
       // Render models
       // TODO: put shaders and models together
       Shader.use(s);
-      modelRender(model);
+      modelRender(model, tex);
       Shader.stop();
 
       // Display sync
@@ -66,15 +72,21 @@ public class Game {
     }
 
     // Cleanup
+    Shaders.freeAll();
     GLObjects.freeAll();
     Display.destroy();
   }
 
-  static Model modelMake(float[] positions, int[] indices) {
+  static Model modelMake(float[] positions, int[] indices, float[] uvs) {
+    int vertexAttr = 0;
+    int uvsAttr = 1;
+
+
     int vaoId = GLObjects.allocVao();
     GLUtil.vaoBind(vaoId);
     GLUtil.bindIndices(indices);
-    GLUtil.attributeStore(K.attr0, positions);
+    GLUtil.attributeStore(K.attr0, K.float_per_vertex, positions);
+    GLUtil.attributeStore(K.attr1, K.float_per_uv, uvs);
     GLUtil.vaoUnbind();
     Model m = new Model();
     m.vaoId = vaoId;
@@ -82,12 +94,15 @@ public class Game {
     return m;
   }
 
-  static void modelRender(Model model) {
+  static void modelRender(Model model, Texture tex) {
     GLUtil.vaoBind(model.vaoId);
     GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
-    //GL11.glDrawArrays(GL11.GL_TRIANGLES, K.offset0, model.vertexCount); // No indices rendering
-    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0); // Indices rendering
+    GLUtil.vertexAttribArrayBind(K.attr1);
+    GL13.glActiveTexture(GL13.GL_TEXTURE0);
+    GLUtil.textureBind(tex.texId);
+    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0);
     GLUtil.vertexAttribArrayUnbind(K.attr0);
+    GLUtil.vertexAttribArrayUnbind(K.attr1);
     GLUtil.vaoUnbind();
   }
 }
@@ -96,10 +111,14 @@ public class Game {
 // Useful constants to avoid hardcoding mystical values in the middle of even more mystical argument lists.
 interface K {
 
-  int offset0 = 0;
-  int attr0 = 0;
-  int vertex_per_triangle = 3;
   int gl_null = 0;
+  int offset0 = 0;
+
+  int attr0 = 0;
+  int attr1 = 1;
+
+  int float_per_vertex = 3;
+  int float_per_uv = 2;
 }
 
 
@@ -139,14 +158,22 @@ class GLUtil {
     GL20.glDisableVertexAttribArray(id);
   }
 
-  static void attributeStore(int attrId, float[] data) {
+  static void textureBind(int id) {
+    GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+  }
+
+  static void textureUnbind() {
+    textureBind(0);
+  }
+
+  static void attributeStore(int attrId, int attrSize, float[] data) {
     int vboId = GLObjects.allocVbo();
     vboArrayBufferBind(vboId);
     FloatBuffer buffer = BufferUtil.make(data);
     GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buffer, GL15.GL_STATIC_DRAW);
     // TODO: separate vbo loading code above from attribute binding code below
     // TODO: what is this 'false' parameter ??
-    GL20.glVertexAttribPointer(attrId, K.vertex_per_triangle, GL11.GL_FLOAT, false, K.gl_null, K.gl_null);
+    GL20.glVertexAttribPointer(attrId, attrSize, GL11.GL_FLOAT, false, K.gl_null, K.gl_null);
     vboArrayBufferUnbind();
   }
 
@@ -165,6 +192,7 @@ class GLObjects {
   // TODO: tracks ids more efficiently without boxing ids !
   static List<Integer> vaos = new ArrayList<Integer>();
   static List<Integer> vbos = new ArrayList<Integer>();
+  static List<Integer> textures = new ArrayList<Integer>();
 
   static int allocVao() {
     int id = GL30.glGenVertexArrays();
@@ -178,9 +206,16 @@ class GLObjects {
     return id;
   }
 
+  static int allocTexture() {
+    int id = GL11.glGenTextures();
+    textures.add(id);
+    return id;
+  }
+
   static void freeAll() {
     vaos.forEach(GL30::glDeleteVertexArrays);
     vbos.forEach(GL15::glDeleteBuffers);
+    textures.forEach(GL11::glDeleteTextures);
   }
 }
 
@@ -228,27 +263,23 @@ interface Config {
 
 // Geometry data
 interface Data {
-  float[] vertices2 = {
-      // Left bottom triangle
-      -0.5f,      0.5f,       0f,
-      -0.5f,      -0.5f,      0f,
-      0.5f,       -0.5f,      0f,
-      0.5f,       0.5f,       0f,
-  };
   float[] vertices = {
-      // Left bottom triangle
-      -0.5f,      0.5f,       0f,
-      -0.5f,      -0.5f,      0f,
-      0.5f,       -0.5f,      0f,
-      // Right top triangle
-      0.5f,       -0.5f,      0f,
-      0.5f,       0.5f,       0f,
-      -0.5f,      0.5f,       0f
+    -0.5f,      0.5f,       0f,       // top left
+    -0.5f,      -0.5f,      0f,       // bot left
+    0.5f,       -0.5f,      0f,       // bot right
+    0.5f,       0.5f,       0f,       // top right
   };
 
   int[] indices = {
     0, 1, 3,
     3, 1, 2,
+  };
+
+  float[] tex_uvs = { // same orders as vertices
+    0.0f,    0.0f,
+    0.0f,    1.0f,
+    1.0f,    1.0f,
+    1.0f,    0.0f,
   };
 }
 
@@ -264,12 +295,14 @@ class Shader {
   int programId;
   int vertexId;
   int fragmentId;
+  String[] bindings;
 
-  static Shader make(String vertexShader, String fragmentShader) {
+  static Shader make(String vertexShader, String fragmentShader, String... bindings) {
     Shader s = new Shader();
     s.vertexId = loadShader(vertexShader, GL20.GL_VERTEX_SHADER);
     s.fragmentId = loadShader(fragmentShader, GL20.GL_FRAGMENT_SHADER);
     s.programId = GL20.glCreateProgram();
+    s.bindings = bindings;
     GL20.glAttachShader(s.programId, s.vertexId);
     GL20.glAttachShader(s.programId, s.fragmentId);
     GL20.glLinkProgram(s.programId);
@@ -288,10 +321,6 @@ class Shader {
     return id;
   }
 
-  void bindAttribute(int attrIndex, String variable) {
-    GL20.glBindAttribLocation(programId, attrIndex, variable);
-  }
-
   void free() {
     GL20.glDetachShader(programId, vertexId);
     GL20.glDetachShader(programId, fragmentId);
@@ -302,6 +331,9 @@ class Shader {
 
   static void use(Shader s) {
     GL20.glUseProgram(s.programId);
+    for (int i = 0; i < s.bindings.length; i++) {
+      GL20.glBindAttribLocation(s.programId, i, s.bindings[i]);
+    }
   }
 
   static void stop() {
@@ -313,8 +345,77 @@ class Shader {
 
 interface Shaders {
 
-  Shader color_gradient = Shader.make("./src/vertex_shader", "./src/fragment_shader");
+  Shader color_gradient = Shader.make("./src/vertex_shader", "./src/fragment_shader", "position", "uv");
 
+  static void freeAll() {
+    // TODO
+  }
 }
 
 
+class PixelUtil {
+  // Getters
+  static int a(int rgba) { return 0xff & (rgba >> 24); }
+  static int r(int rgba) { return 0xff & (rgba >> 16); }
+  static int g(int rgba) { return 0xff & (rgba >>  8); }
+  static int b(int rgba) { return 0xff & rgba; }
+
+  // TODO: Setters
+}
+
+
+class Texture {
+
+  int texId;
+  int w;
+  int h;
+
+  static Texture create(int w, int h, int[] pixels) {
+    int len = w * h;
+
+    ByteBuffer buffer = BufferUtils.createByteBuffer(len * 4);
+    for (int pixel : pixels) {
+      buffer.put((byte) PixelUtil.r(pixel));
+      buffer.put((byte) PixelUtil.g(pixel));
+      buffer.put((byte) PixelUtil.b(pixel));
+      buffer.put((byte) PixelUtil.a(pixel));
+    }
+    buffer.flip();
+
+    Texture t = new Texture();
+    t.texId = GLObjects.allocTexture();
+    t.w = w;
+    t.h = h;
+
+    GLUtil.textureBind(t.texId);
+    //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+    //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+    GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+    //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+    GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, w, h, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
+
+    return t;
+  }
+
+  static int[] testPixels() {
+    int w = 32;
+    int h = 32;
+    int l = w * h;
+    int[] pixels = new int[l];
+
+    for (int i = 0; i < pixels.length; i++) {
+      int a = 0xFF;
+      int r = 0xFF & (i * 5);
+      int g = 0xFF & (i * 2);
+      int b = 0xFF & (i * 1);
+      pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    return pixels;
+  }
+}
+
+interface Textures {
+
+  Texture test_texture = Texture.create(32, 32, Texture.testPixels());
+}
