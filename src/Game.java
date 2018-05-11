@@ -42,10 +42,11 @@ public class Game {
 
 
     // Shader loading
-    Shader s = Shaders.color_gradient;
+    Shader s = Shader.tex;
+    //Shader s = Shader.gradient;
 
     // Texture loading
-    Texture tex = Textures.test_texture;
+    Texture tex = Texture.test_texture;
 
     // Geometry startup
     // TODO: Model should store the texture, and maybe the shader too.
@@ -72,7 +73,7 @@ public class Game {
     }
 
     // Cleanup
-    Shaders.freeAll();
+    Shader.freeAll();
     GLObjects.freeAll();
     Display.destroy();
   }
@@ -190,9 +191,9 @@ class GLUtil {
 // Tracks VBO and VAO ids
 class GLObjects {
   // TODO: tracks ids more efficiently without boxing ids !
-  static List<Integer> vaos = new ArrayList<Integer>();
-  static List<Integer> vbos = new ArrayList<Integer>();
-  static List<Integer> textures = new ArrayList<Integer>();
+  static final List<Integer> vaos = new ArrayList<Integer>();
+  static final List<Integer> vbos = new ArrayList<Integer>();
+  static final List<Integer> textures = new ArrayList<Integer>();
 
   static int allocVao() {
     int id = GL30.glGenVertexArrays();
@@ -297,16 +298,19 @@ class Shader {
   int fragmentId;
   String[] bindings;
 
-  static Shader make(String vertexShader, String fragmentShader, String... bindings) {
+  static final String SKIP = "SKIP_BINDING";
+
+  static Shader make(String shaderdir, String... bindings) {
     Shader s = new Shader();
-    s.vertexId = loadShader(vertexShader, GL20.GL_VERTEX_SHADER);
-    s.fragmentId = loadShader(fragmentShader, GL20.GL_FRAGMENT_SHADER);
+    s.vertexId = loadShader(shaderdir + "/vertex", GL20.GL_VERTEX_SHADER);
+    s.fragmentId = loadShader(shaderdir + "/fragment", GL20.GL_FRAGMENT_SHADER);
     s.programId = GL20.glCreateProgram();
     s.bindings = bindings;
     GL20.glAttachShader(s.programId, s.vertexId);
     GL20.glAttachShader(s.programId, s.fragmentId);
     GL20.glLinkProgram(s.programId);
     GL20.glValidateProgram(s.programId);
+    shaders.add(s);
     return s;
   }
 
@@ -332,6 +336,9 @@ class Shader {
   static void use(Shader s) {
     GL20.glUseProgram(s.programId);
     for (int i = 0; i < s.bindings.length; i++) {
+      if (s.bindings[i] == SKIP) {
+        continue;
+      }
       GL20.glBindAttribLocation(s.programId, i, s.bindings[i]);
     }
   }
@@ -340,15 +347,18 @@ class Shader {
     GL20.glUseProgram(0);
   }
 
-}
+  // Statically load all shaders
+  static final List<Shader> shaders = new ArrayList<>();
 
+  static final Shader gradient = Shader.make(shaderloc("gradient"));
+  static final Shader tex = Shader.make(shaderloc("tex"), "position", "uv");
 
-interface Shaders {
-
-  Shader color_gradient = Shader.make("./src/vertex_shader", "./src/fragment_shader", "position", "uv");
+  static String shaderloc(String leafdir) {
+    return "./src/shaders/" + leafdir;
+  }
 
   static void freeAll() {
-    // TODO
+    shaders.forEach(Shader::free);
   }
 }
 
@@ -413,9 +423,6 @@ class Texture {
 
     return pixels;
   }
-}
 
-interface Textures {
-
-  Texture test_texture = Texture.create(32, 32, Texture.testPixels());
+  static final Texture test_texture = Texture.create(32, 32, Texture.testPixels());
 }
