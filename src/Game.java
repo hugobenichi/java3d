@@ -26,9 +26,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-
 // The main class
-public class Game {
+public final class Game {
 
   public static void main(String[] args) throws Exception {
 
@@ -112,6 +111,8 @@ public class Game {
 // Useful constants to avoid hardcoding mystical values in the middle of even more mystical argument lists.
 interface K {
 
+  boolean debug = true;
+
   int gl_null = 0;
   int offset0 = 0;
 
@@ -124,7 +125,7 @@ interface K {
 
 
 // Static functions for reducing GL syntax bloat.
-class GLUtil {
+final class GLUtil {
   // TODO: add debugging logging for tracking id/attrs binding and unbinding ops.
 
   static void vaoBind(int id) {
@@ -189,7 +190,7 @@ class GLUtil {
 
 
 // Tracks VBO and VAO ids
-class GLObjects {
+final class GLObjects {
   // TODO: tracks ids more efficiently without boxing ids !
   static final List<Integer> vaos = new ArrayList<Integer>();
   static final List<Integer> vbos = new ArrayList<Integer>();
@@ -222,7 +223,7 @@ class GLObjects {
 
 
 // Static function for managing array of ints/floats
-class BufferUtil {
+final class BufferUtil {
   // TODO: consider pooling buffers
 
   static IntBuffer make(int[] data) {
@@ -241,7 +242,7 @@ class BufferUtil {
 }
 
 
-class IOUtil {
+final class IOUtil {
   static String readFile(String path) {
     try {
       byte[] data = Files.readAllBytes(Paths.get(path));
@@ -258,41 +259,41 @@ interface Config {
   int WIDTH           = 1280;
   int HEIGHT          = 720;
   int FPS_CAP         = 60;
-  String TITLE        = "Our First Display";
+  String TITLE        = "Game";
 }
 
 
 // Geometry data
 interface Data {
   float[] vertices = {
-    -0.5f,      0.5f,       0f,       // top left
-    -0.5f,      -0.5f,      0f,       // bot left
-    0.5f,       -0.5f,      0f,       // bot right
-    0.5f,       0.5f,       0f,       // top right
+    -0.5f,      0.5f,       0f,       // v0: top left
+    0.5f,       0.5f,       0f,       // v1: top right
+    0.5f,       -0.5f,      0f,       // v2: bot right
+    -0.5f,      -0.5f,      0f,       // v3: bot left
   };
 
   int[] indices = {
-    0, 1, 3,
-    3, 1, 2,
+    0, 3, 1,  // upper left triangle
+    1, 3, 2,  // lower right triangle
   };
 
   float[] tex_uvs = { // same orders as vertices
     0.0f,    0.0f,
-    0.0f,    1.0f,
-    1.0f,    1.0f,
     1.0f,    0.0f,
+    1.0f,    1.0f,
+    0.0f,    1.0f,
   };
 }
 
 
 // Used to track Vertex Array Object data.
-class Model {
+final class Model {
   int vaoId;
   int vertexCount;
 }
 
 
-class Shader {
+final class Shader {
   int programId;
   int vertexId;
   int fragmentId;
@@ -308,6 +309,13 @@ class Shader {
     s.bindings = bindings;
     GL20.glAttachShader(s.programId, s.vertexId);
     GL20.glAttachShader(s.programId, s.fragmentId);
+    for (int i = 0; i < s.bindings.length; i++) {
+      if (s.bindings[i] == SKIP) {
+        continue;
+      }
+      if (K.debug) System.out.println(String.format("binding attr %d to '%s'", i, s.bindings[i]));
+      GL20.glBindAttribLocation(s.programId, i, s.bindings[i]);
+    }
     GL20.glLinkProgram(s.programId);
     GL20.glValidateProgram(s.programId);
     shaders.add(s);
@@ -339,6 +347,7 @@ class Shader {
       if (s.bindings[i] == SKIP) {
         continue;
       }
+      if (K.debug) System.out.println(String.format("binding attr %d to '%s'", i, s.bindings[i]));
       GL20.glBindAttribLocation(s.programId, i, s.bindings[i]);
     }
   }
@@ -363,18 +372,20 @@ class Shader {
 }
 
 
-class PixelUtil {
+final class PixelUtil {
   // Getters
   static int a(int rgba) { return 0xff & (rgba >> 24); }
   static int r(int rgba) { return 0xff & (rgba >> 16); }
   static int g(int rgba) { return 0xff & (rgba >>  8); }
   static int b(int rgba) { return 0xff & rgba; }
 
-  // TODO: Setters
+  static int rgba(int r, int g, int b, int a) {
+    return (a << 24) | (r << 16) | (g << 8) | b;
+  }
 }
 
 
-class Texture {
+final class Texture {
 
   int texId;
   int w;
@@ -400,14 +411,44 @@ class Texture {
     GLUtil.textureBind(t.texId);
     //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
     //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-    GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-    //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+    GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+    GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
     GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, w, h, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
 
     return t;
   }
 
+  // A 2x2 square texture. TL: red, TR: green, BL: blue, BR: purple.
   static int[] testPixels() {
+    int w = 32;
+    int h = 32;
+    int l = w * h;
+    int[] pixels = new int[l];
+
+    int i = 0;
+    for (; i < 16; i++) {
+      int j = 0;
+      for (; j < 16; j++) {
+        pixels[i * 32 + j] = PixelUtil.rgba(0xff, 0, 0, 0xff);
+      }
+      for (; j < 32; j++) {
+        pixels[i * 32 + j] = PixelUtil.rgba(0, 0xff, 0, 0xff);
+      }
+    }
+    for (; i < 32; i++) {
+      int j = 0;
+      for (; j < 16; j++) {
+        pixels[i * 32 + j] = PixelUtil.rgba(0, 0, 0xff, 0xff);
+      }
+      for (; j < 32; j++) {
+        pixels[i * 32 + j] = PixelUtil.rgba(0x80, 0, 0x80, 0xff);
+      }
+    }
+
+    return pixels;
+  }
+
+  static int[] testPixels2() {
     int w = 32;
     int h = 32;
     int l = w * h;
