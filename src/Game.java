@@ -302,8 +302,8 @@ class Shader {
 
   static Shader make(String shaderdir, String... bindings) {
     Shader s = new Shader();
-    s.vertexId = loadShader(shaderdir + "/vertex", GL20.GL_VERTEX_SHADER);
-    s.fragmentId = loadShader(shaderdir + "/fragment", GL20.GL_FRAGMENT_SHADER);
+    s.vertexId = loadShader(shaderdir + ".vs", GL20.GL_VERTEX_SHADER);
+    s.fragmentId = loadShader(shaderdir + ".fs", GL20.GL_FRAGMENT_SHADER);
     s.programId = GL20.glCreateProgram();
     s.bindings = bindings;
     GL20.glAttachShader(s.programId, s.vertexId);
