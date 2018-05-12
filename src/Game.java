@@ -6,6 +6,7 @@
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.ContextAttribs;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.DisplayMode;
@@ -16,6 +17,8 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.PixelFormat;
+import org.lwjgl.util.vector.Matrix4f;
+import org.lwjgl.util.vector.Vector3f;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -29,6 +32,9 @@ import java.util.List;
 // The main class
 public final class Game {
 
+  static final Matrix4f proj =
+      VecUtil.projectionMatrix(Config.PROJECTION_FOV, Config.PROJECTION_NEAR, Config.PROJECTION_FAR);
+
   public static void main(String[] args) throws Exception {
 
 
@@ -40,31 +46,37 @@ public final class Game {
     GL11.glViewport(0, 0, Config.WIDTH, Config.HEIGHT);
 
 
-    // Shader loading
-    Shader s = Shader.tex;
-    //Shader s = Shader.gradient;
+    // Shader loading; touch all shader subclasses to force static shader loading code.
+    Shader text = Shader.Tex.s;
+    Shader grad = Shader.Gradient.s;
+    Shader s = text; //grad;
 
     // Texture loading
     Texture tex = Texture.test_texture;
 
     // Geometry startup
+
     // TODO: Model should store the texture, and maybe the shader too.
     Model model = modelMake(Data.vertices, Data.indices, Data.tex_uvs);
 
+    Thing thing = new Thing(0,0,0);
 
     while (!Display.isCloseRequested()) {
       // TODO: get input
+      Input.process();
+
       // TODO: run game logic
+      //thing.move(0.001f, 0.001f, 1.0f);
+      //thing.rot(0.01f);
 
       // Prepare rendering
-      GL11.glClearColor(1, 0, 1, 1); // RGBA
-      GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+      GL11.glEnable(GL11.GL_DEPTH_TEST);
+      GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+      GL11.glClearColor(1, 0, 1, 1);
 
-      // Render models
-      // TODO: put shaders and models together
-      Shader.use(s);
-      modelRender(model, tex);
-      Shader.stop();
+      // Draw stuff
+      //modelRender(model, tex, s);
+      thing.render();
 
       // Display sync
       Display.sync(Config.FPS_CAP);
@@ -94,7 +106,8 @@ public final class Game {
     return m;
   }
 
-  static void modelRender(Model model, Texture tex) {
+  static void modelRender(Model model, Texture tex, Shader s) {
+    Shader.use(s);
     GLUtil.vaoBind(model.vaoId);
     GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
     GLUtil.vertexAttribArrayBind(K.attr1);
@@ -104,6 +117,7 @@ public final class Game {
     GLUtil.vertexAttribArrayUnbind(K.attr0);
     GLUtil.vertexAttribArrayUnbind(K.attr1);
     GLUtil.vaoUnbind();
+    Shader.stop();
   }
 }
 
@@ -111,7 +125,9 @@ public final class Game {
 // Useful constants to avoid hardcoding mystical values in the middle of even more mystical argument lists.
 interface K {
 
-  boolean debug = true;
+  boolean debug = false;
+
+  boolean no_transpose = false;
 
   int gl_null = 0;
   int offset0 = 0;
@@ -186,6 +202,8 @@ final class GLUtil {
     GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, buffer, GL15.GL_STATIC_DRAW);
     //vboElementArrayBufferUnbind(); // Why can't I unbind this ??
   }
+
+
 }
 
 
@@ -260,6 +278,10 @@ interface Config {
   int HEIGHT          = 720;
   int FPS_CAP         = 60;
   String TITLE        = "Game";
+
+  float PROJECTION_FOV  = 90;
+  float PROJECTION_NEAR = 1f;
+  float PROJECTION_FAR  = 1000f;
 }
 
 
@@ -300,11 +322,14 @@ final class Shader {
   String[] bindings;
 
   static final String SKIP = "SKIP_BINDING";
+  static final FloatBuffer MATRIX_BUFFER = BufferUtils.createFloatBuffer(4 * 4); // !! not thread safe obviously !!
 
-  static Shader make(String shaderdir, String... bindings) {
+  // Shader creation
+
+  static Shader make(String shadername, String... bindings) {
     Shader s = new Shader();
-    s.vertexId = loadShader(shaderdir + ".vs", GL20.GL_VERTEX_SHADER);
-    s.fragmentId = loadShader(shaderdir + ".fs", GL20.GL_FRAGMENT_SHADER);
+    s.vertexId = loadShader("./src/shaders/" + shadername + ".vs", GL20.GL_VERTEX_SHADER);
+    s.fragmentId = loadShader("./src/shaders/" + shadername + ".fs", GL20.GL_FRAGMENT_SHADER);
     s.programId = GL20.glCreateProgram();
     s.bindings = bindings;
     GL20.glAttachShader(s.programId, s.vertexId);
@@ -333,13 +358,36 @@ final class Shader {
     return id;
   }
 
-  void free() {
-    GL20.glDetachShader(programId, vertexId);
-    GL20.glDetachShader(programId, fragmentId);
-    GL20.glDeleteShader(vertexId);
-    GL20.glDeleteShader(fragmentId);
-    GL20.glDeleteShader(programId);
+  // Uniform variable loading
+
+  static int locationOf(Shader s, String varName) {
+    return GL20.glGetUniformLocation(s.programId, varName);
   }
+
+  static void load1f(int loc, float x) {
+    GL20.glUniform1f(loc, x);
+  }
+
+  static void load2f(int loc, float x, float y) {
+    GL20.glUniform2f(loc, x, y);
+  }
+
+  static void load3f(int loc, float x, float y, float z) {
+    GL20.glUniform3f(loc, x, y, z);
+  }
+
+  static void loadVec3f(int loc, Vector3f v) {
+    GL20.glUniform3f(loc, v.x, v.y, v.z);
+  }
+
+  static void loadMat4f(int loc, Matrix4f m) {
+    MATRIX_BUFFER.clear();
+    m.store(MATRIX_BUFFER);
+    MATRIX_BUFFER.flip();
+    GL20.glUniformMatrix4(loc, K.no_transpose, MATRIX_BUFFER);
+  }
+
+  // Shader management
 
   static void use(Shader s) {
     GL20.glUseProgram(s.programId);
@@ -359,15 +407,44 @@ final class Shader {
   // Statically load all shaders
   static final List<Shader> shaders = new ArrayList<>();
 
-  static final Shader gradient = Shader.make(shaderloc("gradient"));
-  static final Shader tex = Shader.make(shaderloc("tex"), "position", "uv");
-
-  static String shaderloc(String leafdir) {
-    return "./src/shaders/" + leafdir;
+  static void freeAll() {
+    for (Shader s : shaders) {
+      GL20.glDetachShader(s.programId, s.vertexId);
+      GL20.glDetachShader(s.programId, s.fragmentId);
+      GL20.glDeleteShader(s.vertexId);
+      GL20.glDeleteShader(s.fragmentId);
+      GL20.glDeleteShader(s.programId);
+    }
   }
 
-  static void freeAll() {
-    shaders.forEach(Shader::free);
+
+  // Individual shaders are declared and loaded in their own static classes.
+  // This offers a place for managing the uniform variable locations without resorting to subclassing.
+  // Everything ends up being static and final, which is perfect for JIT inlining.
+
+  static final class Tex {
+    static final Shader s = Shader.make("tex", "position", "uv");
+  }
+
+  static final class Gradient {
+    static final Shader s = Shader.make("gradient");
+
+    static final int loc_transformation = Shader.locationOf(s, "transformation");
+    static final int loc_projection = Shader.locationOf(s, "projection");
+
+    static void loadTransformtion(Matrix4f m) {
+      Shader.loadMat4f(loc_transformation, m);
+    }
+
+    static void loadProjection(Matrix4f m) {
+      Shader.loadMat4f(loc_projection, m);
+    }
+
+    static {
+      Shader.use(s);
+      loadProjection(Game.proj);
+      Shader.stop();
+    }
   }
 }
 
@@ -409,8 +486,6 @@ final class Texture {
     t.h = h;
 
     GLUtil.textureBind(t.texId);
-    //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-    //GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
     GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
     GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
     GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, w, h, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
@@ -418,7 +493,7 @@ final class Texture {
     return t;
   }
 
-  // A 2x2 square texture. TL: red, TR: green, BL: blue, BR: purple.
+  // A 32x32 texture made of 4 unicolor squares. TL: red, TR: green, BL: blue, BR: purple.
   static int[] testPixels() {
     int w = 32;
     int h = 32;
@@ -466,4 +541,105 @@ final class Texture {
   }
 
   static final Texture test_texture = Texture.create(32, 32, Texture.testPixels());
+}
+
+final class VecUtil {
+
+  static void transformationMatrix(Matrix4f out, Vector3f trans, float rx, float ry, float rz, float scale) {
+    out.setIdentity();
+    Matrix4f.translate(trans, out, out);
+    Matrix4f.rotate((float) Math.toRadians(rx), new Vector3f(1, 0, 0), out, out);
+    Matrix4f.rotate((float) Math.toRadians(ry), new Vector3f(0, 1, 0), out, out);
+    Matrix4f.rotate((float) Math.toRadians(rz), new Vector3f(0, 0, 1), out, out);
+    Matrix4f.scale(new Vector3f(scale, scale, scale), out, out);
+  }
+
+  static Matrix4f projectionMatrix(float fov, float near, float far) {
+    float w = (float) Display.getWidth();
+    float h = (float) Display.getHeight();
+    float a = w / h;
+    float len = far - near;
+    float scale = 1.0f / (float) Math.tan(Math.toRadians(fov / 2));
+
+    Matrix4f proj = new Matrix4f();
+    proj.m00 = scale;
+    proj.m11 = scale * a;
+    proj.m22 = - (near + far) / len;
+    proj.m33 = 0;
+    proj.m23 = -1;
+    proj.m32 = - 2 * near * far / len;
+
+    proj.setIdentity(); // BUG: my projection matrix is probably completely wrong ??
+    return proj;
+  }
+}
+
+final class Thing {
+  Model model   = Game.modelMake(Data.vertices, Data.indices, Data.tex_uvs);
+  Texture tex   = Texture.test_texture;
+  Shader shader = Shader.Gradient.s;
+
+  Vector3f pos =
+      new Vector3f(0, 0, 0);
+      //new Vector3f(-0.4f,0.8f,0);
+  float rx;
+  float ry;
+  float rz; //= 34;
+  float scale =
+    1.0f;
+    //0.3f;
+  Matrix4f transformation = new Matrix4f();
+
+  Thing(float x0, float y0, float z0) {
+    move(x0, y0, z0);
+    updateTransformation();
+  }
+
+  void move(float dx, float dy, float dz) {
+    pos.x += dx;
+    pos.y += dy;
+    pos.z += dz;
+    updateTransformation();
+  }
+
+  void rot(float drz) {
+      rz += drz;
+  }
+
+  void updateTransformation() {
+    VecUtil.transformationMatrix(transformation, pos, rx, ry, rz, scale);
+  }
+
+  void render() {
+    Shader.use(shader);
+    GLUtil.vaoBind(model.vaoId);
+    GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
+    GLUtil.vertexAttribArrayBind(K.attr1);
+    Shader.Gradient.loadTransformtion(transformation);
+    GL13.glActiveTexture(GL13.GL_TEXTURE0);
+    GLUtil.textureBind(tex.texId);
+    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0);
+    GLUtil.vertexAttribArrayUnbind(K.attr0);
+    GLUtil.vertexAttribArrayUnbind(K.attr1);
+    GLUtil.vaoUnbind();
+    Shader.stop();
+  }
+}
+
+final class Input {
+
+  static final int[] arrow_keys = {
+    Keyboard.KEY_W,
+    Keyboard.KEY_A,
+    Keyboard.KEY_S,
+    Keyboard.KEY_D,
+  };
+
+  static void process() {
+    for (int k : arrow_keys) {
+      if (Keyboard.isKeyDown(k)) {
+        System.out.println("keydown: " + k);
+      }
+    }
+  }
 }
