@@ -33,6 +33,7 @@ import java.util.List;
 public final class Game {
 
   static final Matrix4f proj =
+      //VecUtil.projectionMatrix2(Config.PROJECTION_FOV, Config.PROJECTION_NEAR, Config.PROJECTION_FAR);
       VecUtil.projectionMatrix(Config.PROJECTION_FOV, Config.PROJECTION_NEAR, Config.PROJECTION_FAR);
 
   public static void main(String[] args) throws Exception {
@@ -59,15 +60,15 @@ public final class Game {
     // TODO: Model should store the texture, and maybe the shader too.
     Model model = modelMake(Data.vertices, Data.indices, Data.tex_uvs);
 
-    Thing thing = new Thing(0,0,0);
+    Thing thing = new Thing(0, 0, -1f);
 
     while (!Display.isCloseRequested()) {
       // TODO: get input
       Input.process();
 
       // TODO: run game logic
-      //thing.move(0.001f, 0.001f, 1.0f);
-      //thing.rot(0.01f);
+      thing.move(0.000f, 0.000f, -0.1f);
+      thing.rot(0.01f);
 
       // Prepare rendering
       GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -279,8 +280,8 @@ interface Config {
   int FPS_CAP         = 60;
   String TITLE        = "Game";
 
-  float PROJECTION_FOV  = 90;
-  float PROJECTION_NEAR = 1f;
+  float PROJECTION_FOV  = 120;
+  float PROJECTION_NEAR = 0.1f;
   float PROJECTION_FAR  = 1000f;
 }
 
@@ -555,11 +556,11 @@ final class VecUtil {
   }
 
   static Matrix4f projectionMatrix(float fov, float near, float far) {
-    float w = (float) Display.getWidth();
-    float h = (float) Display.getHeight();
+    float w = Config.WIDTH;
+    float h = Config.HEIGHT;
     float a = w / h;
     float len = far - near;
-    float scale = 1.0f / (float) Math.tan(Math.toRadians(fov / 2));
+    float scale = (float) (1.0f / Math.tan(Math.toRadians(fov / 2)));
 
     Matrix4f proj = new Matrix4f();
     proj.m00 = scale;
@@ -568,8 +569,6 @@ final class VecUtil {
     proj.m33 = 0;
     proj.m23 = -1;
     proj.m32 = - 2 * near * far / len;
-
-    proj.setIdentity(); // BUG: my projection matrix is probably completely wrong ??
     return proj;
   }
 }
