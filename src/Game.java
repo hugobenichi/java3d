@@ -29,6 +29,20 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+
+/* TODOs:
+ *
+ * remove the base model and keep thing only
+ * remove the gradient shader
+ * fork Thing to Room
+ * add more vertices to Room to fix the uv texturing issues
+ * change tex shader to room/static shader
+ *
+ * fix the translation / projection order issue:
+ *    I need to apply a static z translation first, then projection, then translation again ?
+ */
+
+
 // The main class
 public final class Game {
 
@@ -50,7 +64,6 @@ public final class Game {
     // Shader loading; touch all shader subclasses to force static shader loading code.
     Shader text = Shader.Tex.s;
     Shader grad = Shader.Gradient.s;
-    Shader s = text; //grad;
 
     // Texture loading
     Texture tex = Texture.test_texture;
@@ -60,15 +73,49 @@ public final class Game {
     // TODO: Model should store the texture, and maybe the shader too.
     Model model = modelMake(Data.vertices, Data.indices, Data.tex_uvs);
 
-    Thing thing = new Thing(0, 0, -1f);
+    Thing thing = new Thing(0, 0, -12f);
+
+    float fov = Config.PROJECTION_FOV;
+    float z = 0;
 
     while (!Display.isCloseRequested()) {
-      // TODO: get input
       Input.process();
 
-      // TODO: run game logic
-      thing.move(0.000f, 0.000f, -0.1f);
-      thing.rot(0.01f);
+      if (Keyboard.isKeyDown(Keyboard.KEY_UP))    { thing.move(0, +0.05f, 0); }
+      if (Keyboard.isKeyDown(Keyboard.KEY_DOWN))  { thing.move(0, -0.05f, 0); }
+      if (Keyboard.isKeyDown(Keyboard.KEY_LEFT))  { thing.move(-0.05f, 0, 0); }
+      if (Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) { thing.move(+0.05f, 0, 0); }
+
+
+      if (Keyboard.isKeyDown(Keyboard.KEY_W)) {
+        thing.move(0.000f, 0.000f, -0.1f);
+        System.out.println(String.format("fov:%s z:%s", fov, z)); //thing.pos.z));
+        z -= 0.1f;
+        Shader.use(Shader.Tex.s);
+        Shader.Tex.loadTranslation(0, 0, z);
+        Shader.stop();
+      } else if (Keyboard.isKeyDown(Keyboard.KEY_S)) {
+        thing.move(0.000f, 0.000f, +0.1f);
+        System.out.println(String.format("fov:%s z:%s", fov, z)); //thing.pos.z));
+        z += 0.1f;
+        Shader.use(Shader.Tex.s);
+        Shader.Tex.loadTranslation(0, 0, z);
+        Shader.stop();
+      } else if (Keyboard.isKeyDown(Keyboard.KEY_A)) {
+        fov += 1;
+        fov = Math.min(fov, 160);
+        Shader.use(Shader.Gradient.s);
+        Shader.Gradient.loadProjection(VecUtil.projectionMatrix(fov, Config.PROJECTION_NEAR, Config.PROJECTION_FAR));
+        Shader.stop();
+        System.out.println(String.format("fov:%s z:%s", fov, thing.pos.z));
+      } else if (Keyboard.isKeyDown(Keyboard.KEY_D)) {
+        fov -= 1;
+        fov = Math.max(fov, 45);
+        Shader.use(Shader.Gradient.s);
+        Shader.Gradient.loadProjection(VecUtil.projectionMatrix(fov, Config.PROJECTION_NEAR, Config.PROJECTION_FAR));
+        Shader.stop();
+        System.out.println(String.format("fov:%s z:%s", fov, thing.pos.z));
+      }
 
       // Prepare rendering
       GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -76,7 +123,7 @@ public final class Game {
       GL11.glClearColor(1, 0, 1, 1);
 
       // Draw stuff
-      //modelRender(model, tex, s);
+      //modelRender(model, tex, Shader.Tex.s);
       thing.render();
 
       // Display sync
@@ -110,7 +157,7 @@ public final class Game {
   static void modelRender(Model model, Texture tex, Shader s) {
     Shader.use(s);
     GLUtil.vaoBind(model.vaoId);
-    GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
+    GLUtil.vertexAttribArrayBind(K.attr0);
     GLUtil.vertexAttribArrayBind(K.attr1);
     GL13.glActiveTexture(GL13.GL_TEXTURE0);
     GLUtil.textureBind(tex.texId);
@@ -132,6 +179,7 @@ interface K {
 
   int gl_null = 0;
   int offset0 = 0;
+  int stride0 = 0;
 
   int attr0 = 0;
   int attr1 = 1;
@@ -192,7 +240,7 @@ final class GLUtil {
     GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buffer, GL15.GL_STATIC_DRAW);
     // TODO: separate vbo loading code above from attribute binding code below
     // TODO: what is this 'false' parameter ??
-    GL20.glVertexAttribPointer(attrId, attrSize, GL11.GL_FLOAT, false, K.gl_null, K.gl_null);
+    GL20.glVertexAttribPointer(attrId, attrSize, GL11.GL_FLOAT, false, K.stride0, K.offset0);
     vboArrayBufferUnbind();
   }
 
@@ -280,31 +328,55 @@ interface Config {
   int FPS_CAP         = 60;
   String TITLE        = "Game";
 
-  float PROJECTION_FOV  = 120;
+  float PROJECTION_FOV  = 50;
   float PROJECTION_NEAR = 0.1f;
-  float PROJECTION_FAR  = 1000f;
+  float PROJECTION_FAR  = 50f;
 }
 
 
 // Geometry data
 interface Data {
   float[] vertices = {
-    -0.5f,      0.5f,       0f,       // v0: top left
-    0.5f,       0.5f,       0f,       // v1: top right
-    0.5f,       -0.5f,      0f,       // v2: bot right
-    -0.5f,      -0.5f,      0f,       // v3: bot left
+    // Bottom points
+    -6f,      4f,       0f,       // v0: top left
+    6f,       4f,       0f,       // v1: top right
+    6f,       -4f,      0f,       // v2: bot right
+    -6f,      -4f,      0f,       // v3: bot left
+    // Top points
+    -6f,      4f,       3f,       // v4: top left
+    6f,       4f,       3f,       // v5: top right
+    6f,       -4f,      3f,       // v6: bot right
+    -6f,      -4f,      3f,       // v7: bot left
   };
 
   int[] indices = {
+    // Ground
     0, 3, 1,  // upper left triangle
     1, 3, 2,  // lower right triangle
+    // Left wall
+    7, 3, 4,
+    3, 0, 4,
+    // Top wall
+    4, 0, 5,
+    0, 1, 5,
+    // Right wall
+    5, 1, 6,
+    1, 2, 6,
+    // Bottom wall
+    6, 2, 7,
+    2, 3, 7,
   };
 
   float[] tex_uvs = { // same orders as vertices
     0.0f,    0.0f,
-    1.0f,    0.0f,
-    1.0f,    1.0f,
-    0.0f,    1.0f,
+    12.0f,   0.0f,
+    12.0f,   8.0f,
+    0.0f,    8.0f,
+    // just double evertyhing
+    0.0f,    3.0f,
+    12.0f,   3.0f,
+    12.0f,   11.0f,
+    3.0f,    8.0f,
   };
 }
 
@@ -418,13 +490,31 @@ final class Shader {
     }
   }
 
-
   // Individual shaders are declared and loaded in their own static classes.
   // This offers a place for managing the uniform variable locations without resorting to subclassing.
   // Everything ends up being static and final, which is perfect for JIT inlining.
 
   static final class Tex {
     static final Shader s = Shader.make("tex", "position", "uv");
+
+    static final int loc_translation = Shader.locationOf(s, "translation");
+    static final int loc_projection = Shader.locationOf(s, "projection");
+
+    static void loadTranslation(float dx, float dy, float dz) {
+      Shader.load3f(loc_translation, dx, dy, dz);
+    }
+
+    static void loadProjection(Matrix4f m) {
+      Shader.loadMat4f(loc_projection, m);
+    }
+
+    static {
+      Shader.use(s);
+      loadTranslation(0, 0, 0);
+      loadProjection(Game.proj);
+      Shader.stop();
+    }
+
   }
 
   static final class Gradient {
@@ -433,7 +523,7 @@ final class Shader {
     static final int loc_transformation = Shader.locationOf(s, "transformation");
     static final int loc_projection = Shader.locationOf(s, "projection");
 
-    static void loadTransformtion(Matrix4f m) {
+    static void loadTransformation(Matrix4f m) {
       Shader.loadMat4f(loc_transformation, m);
     }
 
@@ -447,6 +537,7 @@ final class Shader {
       Shader.stop();
     }
   }
+
 }
 
 
@@ -546,6 +637,12 @@ final class Texture {
 
 final class VecUtil {
 
+  static void translationMatrix(Matrix4f out, Vector3f trans, float scale) {
+    out.setIdentity();
+    Matrix4f.translate(trans, out, out);
+    Matrix4f.scale(new Vector3f(scale, scale, scale), out, out);
+  }
+
   static void transformationMatrix(Matrix4f out, Vector3f trans, float rx, float ry, float rz, float scale) {
     out.setIdentity();
     Matrix4f.translate(trans, out, out);
@@ -563,12 +660,14 @@ final class VecUtil {
     float scale = (float) (1.0f / Math.tan(Math.toRadians(fov / 2)));
 
     Matrix4f proj = new Matrix4f();
-    proj.m00 = scale;
-    proj.m11 = scale * a;
+    proj.m00 = scale / a;
+    proj.m11 = scale;
     proj.m22 = - (near + far) / len;
     proj.m33 = 0;
     proj.m23 = -1;
     proj.m32 = - 2 * near * far / len;
+    //proj.setIdentity();
+    System.out.println(proj);
     return proj;
   }
 }
@@ -576,17 +675,12 @@ final class VecUtil {
 final class Thing {
   Model model   = Game.modelMake(Data.vertices, Data.indices, Data.tex_uvs);
   Texture tex   = Texture.test_texture;
-  Shader shader = Shader.Gradient.s;
+  Shader shader =
+      //Shader.Gradient.s;
+      Shader.Tex.s;
 
-  Vector3f pos =
-      new Vector3f(0, 0, 0);
-      //new Vector3f(-0.4f,0.8f,0);
-  float rx;
-  float ry;
-  float rz; //= 34;
-  float scale =
-    1.0f;
-    //0.3f;
+  Vector3f pos = new Vector3f(0, 0, 0);
+  float scale = 1.0f;
   Matrix4f transformation = new Matrix4f();
 
   Thing(float x0, float y0, float z0) {
@@ -601,20 +695,17 @@ final class Thing {
     updateTransformation();
   }
 
-  void rot(float drz) {
-      rz += drz;
-  }
-
   void updateTransformation() {
-    VecUtil.transformationMatrix(transformation, pos, rx, ry, rz, scale);
+    VecUtil.translationMatrix(transformation, pos, scale);
   }
 
   void render() {
     Shader.use(shader);
     GLUtil.vaoBind(model.vaoId);
-    GLUtil.vertexAttribArrayBind(K.attr0); // CLEANUP: hardcoded ! put this into the model instead
+    GLUtil.vertexAttribArrayBind(K.attr0);
     GLUtil.vertexAttribArrayBind(K.attr1);
-    Shader.Gradient.loadTransformtion(transformation);
+    Shader.Gradient.loadTransformation(transformation);
+    Shader.Tex.loadTranslation(pos.x, pos.y, pos.z);
     GL13.glActiveTexture(GL13.GL_TEXTURE0);
     GLUtil.textureBind(tex.texId);
     GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0);
@@ -642,3 +733,12 @@ final class Input {
     }
   }
 }
+
+
+// Render a room:
+//
+// I can do a single render draw element with many vertices, and a single texture, and no transformation matrix
+// I can do one vao + n drawElement per face, with different transformation matrices
+// I can do n vao + n drawElement per face, with no transformation matrix
+//
+//
