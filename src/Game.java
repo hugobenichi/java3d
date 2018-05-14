@@ -31,9 +31,7 @@ import java.util.List;
 
 
 /* TODOs:
- *  - fix the translation / projection order issue:
- *       I need to apply a static z translation first, then projection, then translation again ?
- *  - add texture tilling
+ *  - add texture tiles
  */
 
 
@@ -41,7 +39,6 @@ import java.util.List;
 public final class Game {
 
   static final Matrix4f proj =
-      //VecUtil.projectionMatrix2(Config.PROJECTION_FOV, Config.PROJECTION_NEAR, Config.PROJECTION_FAR);
       VecUtil.projectionMatrix(Config.PROJECTION_FOV, Config.PROJECTION_NEAR, Config.PROJECTION_FAR);
 
   public static void main(String[] args) throws Exception {
@@ -58,26 +55,29 @@ public final class Game {
     Texture tex = Texture.test_texture;
 
     // Geometry startup
-    Mesh mesh = Mesh.load(Data.vertices, Data.indices, Data.tex_uvs);
+    Mesh room = Mesh.load(Data.Room.vertices, Data.Room.indices, Data.Room.uvs);
+    Mesh box = Mesh.load(Data.Box.vertices, Data.Box.indices, Data.Box.uvs);
+    Mesh pyr = Mesh.load(Data.Pyramid.vertices, Data.Pyramid.indices, Data.Pyramid.uvs);
 
     float x = 0;
     float y = 0;
     float z = 0;
 
-    float s = 0.1f;
+    float s = 0; //0.1f;
+    float a = Config.ASPECT_RATIO;
 
     while (!Display.isCloseRequested()) {
       // Process input
       Input.process();
-      if (Keyboard.isKeyDown(Keyboard.KEY_LEFT))  { x -= 0.05f; }
-      if (Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) { x += 0.05f; }
-      if (Keyboard.isKeyDown(Keyboard.KEY_UP))    { y += 0.05f; }
-      if (Keyboard.isKeyDown(Keyboard.KEY_DOWN))  { y -= 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_LEFT))  { x += 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) { x -= 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_UP))    { y -= 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_DOWN))  { y += 0.05f; }
       if (Keyboard.isKeyDown(Keyboard.KEY_W))     { z -= 0.05f; }
       if (Keyboard.isKeyDown(Keyboard.KEY_S))     { z += 0.05f; }
 
       x += s;
-      if (Math.abs(x) > 20) {
+      if (Math.abs(x) > 1) {
         s *= -1;
       }
 
@@ -87,11 +87,17 @@ public final class Game {
       GL11.glClearColor(0, 0, 0, 1);
 
       // Draw stuff
-      mesh.render(x, y, z); // room 1
-      mesh.render(x - 13, y, z); // room 2
-      mesh.render(x + 13, y, z); // room 3
-      mesh.render(x, y - 10, z); // room 4
-      mesh.render(x, y + 10, z); // room 5
+      room.render(x, y, z); // room 1
+        box.render(-3, +2, x, y, z);
+        box.render(+5, -3, x, y, z);
+        pyr.render(+1, -2, x, y, z);
+        pyr.render(+1, +1, x, y, z);
+        pyr.render(-2, -2, x, y, z);
+        pyr.render(-2, +1, x, y, z);
+      room.render(x - 3 / a, y, z); // room 2
+      room.render(x + 3 / a, y, z); // room 3
+      room.render(x, y - 2, z); // room 4
+      room.render(x, y + 2, z); // room 5
 
       // Display sync
       Display.sync(Config.FPS_CAP);
@@ -273,87 +279,238 @@ interface Config {
   int FPS_CAP         = 60;
   String TITLE        = "Game";
 
+  float ASPECT_RATIO = (float) WIDTH / (float) HEIGHT;
+
   float PROJECTION_FOV  = 45;
   float PROJECTION_NEAR = 0.1f;
   float PROJECTION_FAR  = 50f;
+
+  float BASE_S = 2; //0.5f; // Base scale applied after the projection matrix
+  float BASE_Z = -13; // Base z translation before the projection matrix is applied
+  //float BASE_Z = -13; // Base z translation before the projection matrix is applied
 }
 
 
 // Geometry data
 interface Data {
-  float[] vertices = {
-    // Ground points
-    -6f,      4f,       0f,       // v0: top left
-    6f,       4f,       0f,       // v1: top right
-    6f,       -4f,      0f,       // v2: bot right
-    -6f,      -4f,      0f,       // v3: bot left
-    // Top wall
-    -6f,      4f,       3f,
-    6f,       4f,       3f,
-    6f,       4f,       0f,
-    -6f,      4f,       0f,
-    // Right wall
-    6f,       4f,       3f,
-    6f,       -4f,      3f,
-    6f,       -4f,      0f,
-    6f,       4f,       0f,
-    // Bottom wall
-    6f,       -4f,       3f,
-    -6f,      -4f,       3f,
-    -6f,      -4f,       0f,
-    6f,       -4f,       0f,
-    // Left wall
-    -6f,      -4f,      3f,
-    -6f,      4f,       3f,
-    -6f,      4f,       0f,
-    -6f,      -4f,      0f,
-  };
 
-  int[] indices = {
-    // Ground
-    0, 3, 1,  // upper left triangle
-    1, 3, 2,  // lower right triangle
-    // Top wall
-    4, 7, 5,
-    5, 7, 6,
-    // Right wall
-    8, 11, 9,
-    9, 11, 10,
-    // Bottom wall
-    12, 15, 13,
-    13, 15, 14,
-    // Left wall
-    16, 19, 17,
-    17, 19, 18,
-  };
+  interface Room {
+    float[] vertices = {
+      // Ground points
+      -6f,      4f,       0f,       // v0: top left
+      6f,       4f,       0f,       // v1: top right
+      6f,       -4f,      0f,       // v2: bot right
+      -6f,      -4f,      0f,       // v3: bot left
+      // Top wall
+      -6f,      4f,       3f,
+      6f,       4f,       3f,
+      6f,       4f,       0f,
+      -6f,      4f,       0f,
+      // Right wall
+      6f,       4f,       3f,
+      6f,       -4f,      3f,
+      6f,       -4f,      0f,
+      6f,       4f,       0f,
+      // Bottom wall
+      6f,       -4f,       3f,
+      -6f,      -4f,       3f,
+      -6f,      -4f,       0f,
+      6f,       -4f,       0f,
+      // Left wall
+      -6f,      -4f,      3f,
+      -6f,      4f,       3f,
+      -6f,      4f,       0f,
+      -6f,      -4f,      0f,
+    };
 
-  float[] tex_uvs = { // same orders as vertices
-    // Ground
-    0.0f,    0.0f,
-    12.0f,   0.0f,
-    12.0f,   8.0f,
-    0.0f,    8.0f,
-    // Top wall
-    0.0f,    0.0f,
-    6.0f,   0.0f,
-    6.0f,   3.0f,
-    0.0f,    3.0f,
-    //  wall
-    0.0f,    0.0f,
-    4.0f,    0.0f,
-    4.0f,    3.0f,
-    0.0f,    3.0f,
-    // Top wall
-    0.0f,    0.0f,
-    6.0f,   0.0f,
-    6.0f,   3.0f,
-    0.0f,    3.0f,
-    // Top wall
-    0.0f,    0.0f,
-    4.0f,    0.0f,
-    4.0f,    3.0f,
-    0.0f,    3.0f,
-  };
+    int[] indices = {
+      // Ground
+      0, 3, 1,  // upper left triangle
+      1, 3, 2,  // lower right triangle
+      // Top wall
+      4, 7, 5,
+      5, 7, 6,
+      // Right wall
+      8, 11, 9,
+      9, 11, 10,
+      // Bottom wall
+      12, 15, 13,
+      13, 15, 14,
+      // Left wall
+      16, 19, 17,
+      17, 19, 18,
+    };
+
+    float[] uvs = { // same orders as vertices
+      // Ground
+      0.0f,    0.0f,
+      12.0f,   0.0f,
+      12.0f,   8.0f,
+      0.0f,    8.0f,
+      // Top wall
+      0.0f,    0.0f,
+      6.0f,   0.0f,
+      6.0f,   3.0f,
+      0.0f,    3.0f,
+      // Right wall
+      0.0f,    0.0f,
+      4.0f,    0.0f,
+      4.0f,    3.0f,
+      0.0f,    3.0f,
+      // Bottom wall
+      0.0f,    0.0f,
+      6.0f,   0.0f,
+      6.0f,   3.0f,
+      0.0f,    3.0f,
+      // Left wall
+      0.0f,    0.0f,
+      4.0f,    0.0f,
+      4.0f,    3.0f,
+      0.0f,    3.0f,
+    };
+  }
+
+  interface Box {
+    float[] vertices = {
+      // Box top
+      0f,       1f,      0.9f,
+      1f,       1f,      0.9f,
+      1f,       0f,      0.9f,
+      0f,       0f,      0.9f,
+      // Box up
+      0f,       1f,      0.9f,
+      1f,       1f,      0.9f,
+      1f,       1f,      0f,
+      0f,       1f,      0f,
+      // Box right
+      1f,       1f,      0.9f,
+      1f,       0f,      0.9f,
+      1f,       0f,      0f,
+      1f,       1f,      0f,
+      // Box bottom
+      1f,       0f,      0.9f,
+      0f,       0f,      0.9f,
+      0f,       0f,      0f,
+      1f,       0f,      0f,
+      // Box left
+      0f,       0f,      0.9f,
+      0f,       1f,      0.9f,
+      0f,       1f,      0f,
+      0f,       0f,      0f,
+    };
+
+    int[] indices = {
+      0, 3, 1,
+      1, 3, 2,
+      4, 7, 5,
+      5, 7, 6,
+      8, 11, 9,
+      9, 11, 10,
+      12, 15, 13,
+      13, 15, 14,
+      16, 19, 17,
+      17, 19, 18,
+    };
+
+    float[] uvs = {
+      // Box top
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box up
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box right
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box bottom
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box left
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+    };
+  }
+
+  interface Pyramid {
+    float[] vertices = {
+      // Box top
+      0.25f,       0.75f,      0.6f,
+      0.75f,       0.75f,      0.6f,
+      0.75f,       0.25f,      0.6f,
+      0.25f,       0.25f,      0.6f,
+      // Box up
+      0.25f,       0.75f,      0.6f,
+      0.75f,       0.75f,      0.6f,
+      1f,       1f,      0f,
+      0f,       1f,      0f,
+      // Box right
+      0.75f,       0.75f,      0.6f,
+      0.75f,       0.25f,      0.6f,
+      1f,       0f,      0f,
+      1f,       1f,      0f,
+      // Box bottom
+      0.75f,       0.25f,      0.6f,
+      0.25f,       0.25f,      0.6f,
+      0f,       0f,      0f,
+      1f,       0f,      0f,
+      // Box left
+      0.25f,       0.25f,      0.6f,
+      0.25f,       0.75f,      0.6f,
+      0f,       1f,      0f,
+      0f,       0f,      0f,
+    };
+
+    int[] indices = {
+      0, 3, 1,
+      1, 3, 2,
+      4, 7, 5,
+      5, 7, 6,
+      8, 11, 9,
+      9, 11, 10,
+      12, 15, 13,
+      13, 15, 14,
+      16, 19, 17,
+      17, 19, 18,
+    };
+
+    float[] uvs = {
+      // Box top
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box up
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box right
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box bottom
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+      // Box left
+      0.0f,   0.0f,
+      1.0f,   0.0f,
+      1.0f,   1.0f,
+      0.0f,   1.0f,
+    };
+  }
 }
 
 
@@ -570,9 +727,7 @@ final class VecUtil {
   }
 
   static Matrix4f projectionMatrix(float fov, float near, float far) {
-    float w = Config.WIDTH;
-    float h = Config.HEIGHT;
-    float a = w / h;
+    float a = Config.ASPECT_RATIO;
     float len = far - near;
     float scale = (float) (1.0f / Math.tan(Math.toRadians(fov / 2)));
 
@@ -593,11 +748,16 @@ final class Mesh {
   static final int ATTR_UVS = K.attr1;
 
   static final Shader shader        = Shader.make("static_room", "position", "uv");
+  static final int loc_base_s       = Shader.locationOf(shader, "base_s");
+  static final int loc_base_z       = Shader.locationOf(shader, "base_z");
+  static final int loc_world_xy     = Shader.locationOf(shader, "world_xy");
   static final int loc_translation  = Shader.locationOf(shader, "translation");
   static final int loc_projection   = Shader.locationOf(shader, "projection");
 
   static {
       Shader.use(shader);
+      Shader.load1f(loc_base_s, Config.BASE_S);
+      Shader.load1f(loc_base_z, Config.BASE_Z);
       Shader.load3f(loc_translation, 0, 0, 0);
       Shader.loadMat4f(loc_projection, Game.proj);
       Shader.stop();
@@ -608,7 +768,12 @@ final class Mesh {
   int textureId = Texture.test_texture.texId;
 
   void render(float dx, float dy, float dz) {
+    render(0, 0, dx, dy, dz);
+  }
+
+  void render(float wx, float wy, float dx, float dy, float dz) {
     Shader.use(shader);
+    Shader.load2f(loc_world_xy, wx, wy);
     Shader.load3f(loc_translation, dx, dy, dz);
     GLUtil.vaoBind(vaoId);
     GLUtil.vertexAttribArrayBind(ATTR_POS);
