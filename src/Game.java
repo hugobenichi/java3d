@@ -31,15 +31,9 @@ import java.util.List;
 
 
 /* TODOs:
- *
- * remove the base model and keep thing only
- * remove the gradient shader
- * fork Thing to Room
- * add more vertices to Room to fix the uv texturing issues
- * change tex shader to room/static shader
- *
- * fix the translation / projection order issue:
- *    I need to apply a static z translation first, then projection, then translation again ?
+ *  - fix the translation / projection order issue:
+ *       I need to apply a static z translation first, then projection, then translation again ?
+ *  - add texture tilling
  */
 
 
@@ -60,71 +54,44 @@ public final class Game {
 
     GL11.glViewport(0, 0, Config.WIDTH, Config.HEIGHT);
 
-
-    // Shader loading; touch all shader subclasses to force static shader loading code.
-    Shader text = Shader.Tex.s;
-    Shader grad = Shader.Gradient.s;
-
     // Texture loading
     Texture tex = Texture.test_texture;
 
     // Geometry startup
+    Mesh mesh = Mesh.load(Data.vertices, Data.indices, Data.tex_uvs);
 
-    // TODO: Model should store the texture, and maybe the shader too.
-    Model model = modelMake(Data.vertices, Data.indices, Data.tex_uvs);
-
-    Thing thing = new Thing(0, 0, -12f);
-
-    float fov = Config.PROJECTION_FOV;
+    float x = 0;
+    float y = 0;
     float z = 0;
 
+    float s = 0.1f;
+
     while (!Display.isCloseRequested()) {
+      // Process input
       Input.process();
+      if (Keyboard.isKeyDown(Keyboard.KEY_LEFT))  { x -= 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) { x += 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_UP))    { y += 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_DOWN))  { y -= 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_W))     { z -= 0.05f; }
+      if (Keyboard.isKeyDown(Keyboard.KEY_S))     { z += 0.05f; }
 
-      if (Keyboard.isKeyDown(Keyboard.KEY_UP))    { thing.move(0, +0.05f, 0); }
-      if (Keyboard.isKeyDown(Keyboard.KEY_DOWN))  { thing.move(0, -0.05f, 0); }
-      if (Keyboard.isKeyDown(Keyboard.KEY_LEFT))  { thing.move(-0.05f, 0, 0); }
-      if (Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) { thing.move(+0.05f, 0, 0); }
-
-
-      if (Keyboard.isKeyDown(Keyboard.KEY_W)) {
-        thing.move(0.000f, 0.000f, -0.1f);
-        System.out.println(String.format("fov:%s z:%s", fov, z)); //thing.pos.z));
-        z -= 0.1f;
-        Shader.use(Shader.Tex.s);
-        Shader.Tex.loadTranslation(0, 0, z);
-        Shader.stop();
-      } else if (Keyboard.isKeyDown(Keyboard.KEY_S)) {
-        thing.move(0.000f, 0.000f, +0.1f);
-        System.out.println(String.format("fov:%s z:%s", fov, z)); //thing.pos.z));
-        z += 0.1f;
-        Shader.use(Shader.Tex.s);
-        Shader.Tex.loadTranslation(0, 0, z);
-        Shader.stop();
-      } else if (Keyboard.isKeyDown(Keyboard.KEY_A)) {
-        fov += 1;
-        fov = Math.min(fov, 160);
-        Shader.use(Shader.Gradient.s);
-        Shader.Gradient.loadProjection(VecUtil.projectionMatrix(fov, Config.PROJECTION_NEAR, Config.PROJECTION_FAR));
-        Shader.stop();
-        System.out.println(String.format("fov:%s z:%s", fov, thing.pos.z));
-      } else if (Keyboard.isKeyDown(Keyboard.KEY_D)) {
-        fov -= 1;
-        fov = Math.max(fov, 45);
-        Shader.use(Shader.Gradient.s);
-        Shader.Gradient.loadProjection(VecUtil.projectionMatrix(fov, Config.PROJECTION_NEAR, Config.PROJECTION_FAR));
-        Shader.stop();
-        System.out.println(String.format("fov:%s z:%s", fov, thing.pos.z));
+      x += s;
+      if (Math.abs(x) > 20) {
+        s *= -1;
       }
 
       // Prepare rendering
       GL11.glEnable(GL11.GL_DEPTH_TEST);
       GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-      GL11.glClearColor(1, 0, 1, 1);
+      GL11.glClearColor(0, 0, 0, 1);
 
       // Draw stuff
-      //modelRender(model, tex, Shader.Tex.s);
-      thing.render();
+      mesh.render(x, y, z); // room 1
+      mesh.render(x - 13, y, z); // room 2
+      mesh.render(x + 13, y, z); // room 3
+      mesh.render(x, y - 10, z); // room 4
+      mesh.render(x, y + 10, z); // room 5
 
       // Display sync
       Display.sync(Config.FPS_CAP);
@@ -135,37 +102,6 @@ public final class Game {
     Shader.freeAll();
     GLObjects.freeAll();
     Display.destroy();
-  }
-
-  static Model modelMake(float[] positions, int[] indices, float[] uvs) {
-    int vertexAttr = 0;
-    int uvsAttr = 1;
-
-
-    int vaoId = GLObjects.allocVao();
-    GLUtil.vaoBind(vaoId);
-    GLUtil.bindIndices(indices);
-    GLUtil.attributeStore(K.attr0, K.float_per_vertex, positions);
-    GLUtil.attributeStore(K.attr1, K.float_per_uv, uvs);
-    GLUtil.vaoUnbind();
-    Model m = new Model();
-    m.vaoId = vaoId;
-    m.vertexCount = indices.length;
-    return m;
-  }
-
-  static void modelRender(Model model, Texture tex, Shader s) {
-    Shader.use(s);
-    GLUtil.vaoBind(model.vaoId);
-    GLUtil.vertexAttribArrayBind(K.attr0);
-    GLUtil.vertexAttribArrayBind(K.attr1);
-    GL13.glActiveTexture(GL13.GL_TEXTURE0);
-    GLUtil.textureBind(tex.texId);
-    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0);
-    GLUtil.vertexAttribArrayUnbind(K.attr0);
-    GLUtil.vertexAttribArrayUnbind(K.attr1);
-    GLUtil.vaoUnbind();
-    Shader.stop();
   }
 }
 
@@ -251,8 +187,17 @@ final class GLUtil {
     GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, buffer, GL15.GL_STATIC_DRAW);
     //vboElementArrayBufferUnbind(); // Why can't I unbind this ??
   }
+}
 
+final class VaoAttrDescr {
+  final int positions;
+  final int uvs;
+  VaoAttrDescr(int p, int u) {
+    positions = p;
+    uvs = u;
+  }
 
+  static final VaoAttrDescr base_descr = new VaoAttrDescr(K.attr0, K.attr1);
 }
 
 
@@ -328,7 +273,7 @@ interface Config {
   int FPS_CAP         = 60;
   String TITLE        = "Game";
 
-  float PROJECTION_FOV  = 50;
+  float PROJECTION_FOV  = 45;
   float PROJECTION_NEAR = 0.1f;
   float PROJECTION_FAR  = 50f;
 }
@@ -337,46 +282,77 @@ interface Config {
 // Geometry data
 interface Data {
   float[] vertices = {
-    // Bottom points
+    // Ground points
     -6f,      4f,       0f,       // v0: top left
     6f,       4f,       0f,       // v1: top right
     6f,       -4f,      0f,       // v2: bot right
     -6f,      -4f,      0f,       // v3: bot left
-    // Top points
-    -6f,      4f,       3f,       // v4: top left
-    6f,       4f,       3f,       // v5: top right
-    6f,       -4f,      3f,       // v6: bot right
-    -6f,      -4f,      3f,       // v7: bot left
+    // Top wall
+    -6f,      4f,       3f,
+    6f,       4f,       3f,
+    6f,       4f,       0f,
+    -6f,      4f,       0f,
+    // Right wall
+    6f,       4f,       3f,
+    6f,       -4f,      3f,
+    6f,       -4f,      0f,
+    6f,       4f,       0f,
+    // Bottom wall
+    6f,       -4f,       3f,
+    -6f,      -4f,       3f,
+    -6f,      -4f,       0f,
+    6f,       -4f,       0f,
+    // Left wall
+    -6f,      -4f,      3f,
+    -6f,      4f,       3f,
+    -6f,      4f,       0f,
+    -6f,      -4f,      0f,
   };
 
   int[] indices = {
     // Ground
     0, 3, 1,  // upper left triangle
     1, 3, 2,  // lower right triangle
-    // Left wall
-    7, 3, 4,
-    3, 0, 4,
     // Top wall
-    4, 0, 5,
-    0, 1, 5,
+    4, 7, 5,
+    5, 7, 6,
     // Right wall
-    5, 1, 6,
-    1, 2, 6,
+    8, 11, 9,
+    9, 11, 10,
     // Bottom wall
-    6, 2, 7,
-    2, 3, 7,
+    12, 15, 13,
+    13, 15, 14,
+    // Left wall
+    16, 19, 17,
+    17, 19, 18,
   };
 
   float[] tex_uvs = { // same orders as vertices
+    // Ground
     0.0f,    0.0f,
     12.0f,   0.0f,
     12.0f,   8.0f,
     0.0f,    8.0f,
-    // just double evertyhing
+    // Top wall
+    0.0f,    0.0f,
+    6.0f,   0.0f,
+    6.0f,   3.0f,
     0.0f,    3.0f,
-    12.0f,   3.0f,
-    12.0f,   11.0f,
-    3.0f,    8.0f,
+    //  wall
+    0.0f,    0.0f,
+    4.0f,    0.0f,
+    4.0f,    3.0f,
+    0.0f,    3.0f,
+    // Top wall
+    0.0f,    0.0f,
+    6.0f,   0.0f,
+    6.0f,   3.0f,
+    0.0f,    3.0f,
+    // Top wall
+    0.0f,    0.0f,
+    4.0f,    0.0f,
+    4.0f,    3.0f,
+    0.0f,    3.0f,
   };
 }
 
@@ -493,51 +469,13 @@ final class Shader {
   // Individual shaders are declared and loaded in their own static classes.
   // This offers a place for managing the uniform variable locations without resorting to subclassing.
   // Everything ends up being static and final, which is perfect for JIT inlining.
-
-  static final class Tex {
-    static final Shader s = Shader.make("tex", "position", "uv");
-
-    static final int loc_translation = Shader.locationOf(s, "translation");
-    static final int loc_projection = Shader.locationOf(s, "projection");
-
-    static void loadTranslation(float dx, float dy, float dz) {
-      Shader.load3f(loc_translation, dx, dy, dz);
-    }
-
-    static void loadProjection(Matrix4f m) {
-      Shader.loadMat4f(loc_projection, m);
-    }
-
-    static {
-      Shader.use(s);
-      loadTranslation(0, 0, 0);
-      loadProjection(Game.proj);
-      Shader.stop();
-    }
-
-  }
-
-  static final class Gradient {
-    static final Shader s = Shader.make("gradient");
-
-    static final int loc_transformation = Shader.locationOf(s, "transformation");
-    static final int loc_projection = Shader.locationOf(s, "projection");
-
-    static void loadTransformation(Matrix4f m) {
-      Shader.loadMat4f(loc_transformation, m);
-    }
-
-    static void loadProjection(Matrix4f m) {
-      Shader.loadMat4f(loc_projection, m);
-    }
-
-    static {
-      Shader.use(s);
-      loadProjection(Game.proj);
-      Shader.stop();
-    }
-  }
-
+  //static final class Example {
+  //  static final Shader s = Shader.make("Example", "attr1", "attr2");
+  //  static final int loc_var1 = Shader.locationOf(s, "var1");
+  //  static void loadVar1(float dx, float dy, float dz) {
+  //    Shader.load3f(loc_var1, dx, dy, dz);
+  //  }
+  //}
 }
 
 
@@ -585,54 +523,33 @@ final class Texture {
     return t;
   }
 
-  // A 32x32 texture made of 4 unicolor squares. TL: red, TR: green, BL: blue, BR: purple.
   static int[] testPixels() {
-    int w = 32;
-    int h = 32;
+    int turquoise_light = PixelUtil.rgba(72, 216, 255, 0xff);
+    int turquoise_base = PixelUtil.rgba(48, 144, 192, 0xff);
+    int turquoise_dark = PixelUtil.rgba(0x20, 0x60, 0x80, 0xff);
+
+    int w = 16;
+    int h = 16;
     int l = w * h;
     int[] pixels = new int[l];
 
-    int i = 0;
-    for (; i < 16; i++) {
-      int j = 0;
-      for (; j < 16; j++) {
-        pixels[i * 32 + j] = PixelUtil.rgba(0xff, 0, 0, 0xff);
-      }
-      for (; j < 32; j++) {
-        pixels[i * 32 + j] = PixelUtil.rgba(0, 0xff, 0, 0xff);
-      }
+    for (int i = 0; i < l; i++) {
+      pixels[i] = turquoise_base;
     }
-    for (; i < 32; i++) {
-      int j = 0;
-      for (; j < 16; j++) {
-        pixels[i * 32 + j] = PixelUtil.rgba(0, 0, 0xff, 0xff);
-      }
-      for (; j < 32; j++) {
-        pixels[i * 32 + j] = PixelUtil.rgba(0x80, 0, 0x80, 0xff);
-      }
+    for (int i = 0; i < 16; i++) {
+      pixels[i * 16] = turquoise_light;
+      pixels[i] = turquoise_light;
+      pixels[15 * 16 + i] = turquoise_dark;
+      pixels[15 + 16 * i] = turquoise_dark;
     }
-
+    pixels[0] = turquoise_base;
+    pixels[l-1] = turquoise_base;
+    pixels[15] = turquoise_base;
+    pixels[l-16] = turquoise_base;
     return pixels;
   }
 
-  static int[] testPixels2() {
-    int w = 32;
-    int h = 32;
-    int l = w * h;
-    int[] pixels = new int[l];
-
-    for (int i = 0; i < pixels.length; i++) {
-      int a = 0xFF;
-      int r = 0xFF & (i * 5);
-      int g = 0xFF & (i * 2);
-      int b = 0xFF & (i * 1);
-      pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
-    return pixels;
-  }
-
-  static final Texture test_texture = Texture.create(32, 32, Texture.testPixels());
+  static final Texture test_texture = Texture.create(16, 16, Texture.testPixels());
 }
 
 final class VecUtil {
@@ -666,53 +583,56 @@ final class VecUtil {
     proj.m33 = 0;
     proj.m23 = -1;
     proj.m32 = - 2 * near * far / len;
-    //proj.setIdentity();
-    System.out.println(proj);
+    if (K.debug) System.out.println(proj);
     return proj;
   }
 }
 
-final class Thing {
-  Model model   = Game.modelMake(Data.vertices, Data.indices, Data.tex_uvs);
-  Texture tex   = Texture.test_texture;
-  Shader shader =
-      //Shader.Gradient.s;
-      Shader.Tex.s;
+final class Mesh {
+  static final int ATTR_POS = K.attr0;
+  static final int ATTR_UVS = K.attr1;
 
-  Vector3f pos = new Vector3f(0, 0, 0);
-  float scale = 1.0f;
-  Matrix4f transformation = new Matrix4f();
+  static final Shader shader        = Shader.make("static_room", "position", "uv");
+  static final int loc_translation  = Shader.locationOf(shader, "translation");
+  static final int loc_projection   = Shader.locationOf(shader, "projection");
 
-  Thing(float x0, float y0, float z0) {
-    move(x0, y0, z0);
-    updateTransformation();
+  static {
+      Shader.use(shader);
+      Shader.load3f(loc_translation, 0, 0, 0);
+      Shader.loadMat4f(loc_projection, Game.proj);
+      Shader.stop();
   }
 
-  void move(float dx, float dy, float dz) {
-    pos.x += dx;
-    pos.y += dy;
-    pos.z += dz;
-    updateTransformation();
-  }
+  int vaoId;
+  int vertexCount;
+  int textureId = Texture.test_texture.texId;
 
-  void updateTransformation() {
-    VecUtil.translationMatrix(transformation, pos, scale);
-  }
-
-  void render() {
+  void render(float dx, float dy, float dz) {
     Shader.use(shader);
-    GLUtil.vaoBind(model.vaoId);
-    GLUtil.vertexAttribArrayBind(K.attr0);
-    GLUtil.vertexAttribArrayBind(K.attr1);
-    Shader.Gradient.loadTransformation(transformation);
-    Shader.Tex.loadTranslation(pos.x, pos.y, pos.z);
+    Shader.load3f(loc_translation, dx, dy, dz);
+    GLUtil.vaoBind(vaoId);
+    GLUtil.vertexAttribArrayBind(ATTR_POS);
+    GLUtil.vertexAttribArrayBind(ATTR_UVS);
     GL13.glActiveTexture(GL13.GL_TEXTURE0);
-    GLUtil.textureBind(tex.texId);
-    GL11.glDrawElements(GL11.GL_TRIANGLES, model.vertexCount, GL11.GL_UNSIGNED_INT, K.offset0);
-    GLUtil.vertexAttribArrayUnbind(K.attr0);
-    GLUtil.vertexAttribArrayUnbind(K.attr1);
+    GLUtil.textureBind(textureId);
+    GL11.glDrawElements(GL11.GL_TRIANGLES, vertexCount, GL11.GL_UNSIGNED_INT, K.offset0);
+    GLUtil.vertexAttribArrayUnbind(ATTR_POS);
+    GLUtil.vertexAttribArrayUnbind(ATTR_UVS);
     GLUtil.vaoUnbind();
     Shader.stop();
+  }
+
+  static Mesh load(float[] positions, int[] indices, float[] uvs) {
+    int vaoId = GLObjects.allocVao();
+    GLUtil.vaoBind(vaoId);
+    GLUtil.bindIndices(indices);
+    GLUtil.attributeStore(ATTR_POS, K.float_per_vertex, positions);
+    GLUtil.attributeStore(ATTR_UVS, K.float_per_uv, uvs);
+    GLUtil.vaoUnbind();
+    Mesh m = new Mesh();
+    m.vaoId = vaoId;
+    m.vertexCount = indices.length;
+    return m;
   }
 }
 
@@ -735,10 +655,3 @@ final class Input {
 }
 
 
-// Render a room:
-//
-// I can do a single render draw element with many vertices, and a single texture, and no transformation matrix
-// I can do one vao + n drawElement per face, with different transformation matrices
-// I can do n vao + n drawElement per face, with no transformation matrix
-//
-//
