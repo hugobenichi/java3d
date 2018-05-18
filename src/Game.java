@@ -55,9 +55,6 @@ public final class Game {
     Texture tex = Texture.test_texture;
 
     // Geometry startup
-    Mesh room = Mesh.load(Data.Room.vertices, Data.Room.indices, Data.Room.uvs);
-    Mesh box = Mesh.load(Data.Box.vertices, Data.Box.indices, Data.Box.uvs);
-    Mesh pyr = Mesh.load(Data.Pyramid.vertices, Data.Pyramid.indices, Data.Pyramid.uvs);
 
     float x = 0;
     float y = 0;
@@ -65,6 +62,62 @@ public final class Game {
 
     float s = 0; //0.1f;
     float a = Config.ASPECT_RATIO;
+
+    Room r1 = new Room(0,0,0);
+      r1.addBox(-3, +3);
+      r1.addBox(-3, +1);
+      r1.addBox(-3, -2);
+      r1.addBox(-3, -4);
+
+      r1.addBox(+2, +3);
+      r1.addBox(+2, +1);
+      r1.addBox(+2, -2);
+      r1.addBox(+2, -4);
+
+      r1.addBox(+5, +1);
+      r1.addBox(+5, -2);
+      r1.addBox(-6, +1);
+      r1.addBox(-6, -2);
+
+    Room r2 = new Room(-3 / a, 0, 0);
+      r2.addPyr(+1, -2);
+      r2.addPyr(+1, +1);
+      r2.addPyr(-2, -2);
+      r2.addPyr(-2, +1);
+
+      r2.addPyr(-1, +2);
+      r2.addPyr(+0, +2);
+      r2.addPyr(-1, -3);
+      r2.addPyr(+0, -3);
+
+      r2.addPyr(-3, -0);
+      r2.addPyr(-3, -1);
+      r2.addPyr(+2, -0);
+      r2.addPyr(+2, -1);
+
+    Room r3 = new Room(+3 / a, 0, 0);
+      r3.addBox(-2, +3);
+      r3.addBox(-2, +2);
+      r3.addBox(+1, +3);
+      r3.addBox(+1, +2);
+      r3.addBox(-1, +1);
+      r3.addBox(-0, +1);
+
+    Room r4 = new Room(0, -2, 0);
+      for (int i = 0; i < 5; i++) {
+        r4.addObj(Room.box, -6 + i, +1, +1);
+        r4.addObj(Room.box, -6 + i, -2, +1);
+        r4.addObj(Room.box, 5 - i, +1, +1);
+        r4.addObj(Room.box, 5 - i, -2, +1);
+      }
+      for (int i = 0; i < 2; i++) {
+        r4.addObj(Room.box, -2, 3 - i, +1);
+        r4.addObj(Room.box, +1, 3 - i, +1);
+        r4.addObj(Room.box, -2, -4 + i, +1);
+        r4.addObj(Room.box, +1, -4 + i, +1);
+      }
+
+    Room r5 = new Room(0, +2, 0);
 
     while (!Display.isCloseRequested()) {
       // Process input
@@ -87,17 +140,11 @@ public final class Game {
       GL11.glClearColor(0, 0, 0, 1);
 
       // Draw stuff
-      room.render(x, y, z); // room 1
-        box.render(-3, +2, x, y, z);
-        box.render(+5, -3, x, y, z);
-        pyr.render(+1, -2, x, y, z);
-        pyr.render(+1, +1, x, y, z);
-        pyr.render(-2, -2, x, y, z);
-        pyr.render(-2, +1, x, y, z);
-      room.render(x - 3 / a, y, z); // room 2
-      room.render(x + 3 / a, y, z); // room 3
-      room.render(x, y - 2, z); // room 4
-      room.render(x, y + 2, z); // room 5
+      r1.render(x, y, z);
+      r2.render(x, y, z);
+      r3.render(x, y, z);
+      r4.render(x, y, z);
+      r5.render(x, y, z);
 
       // Display sync
       Display.sync(Config.FPS_CAP);
@@ -285,9 +332,8 @@ interface Config {
   float PROJECTION_NEAR = 0.1f;
   float PROJECTION_FAR  = 50f;
 
-  float BASE_S = 2; //0.5f; // Base scale applied after the projection matrix
+  float BASE_S = 1; //0.5f; // Base scale applied after the projection matrix
   float BASE_Z = -13; // Base z translation before the projection matrix is applied
-  //float BASE_Z = -13; // Base z translation before the projection matrix is applied
 }
 
 
@@ -799,6 +845,62 @@ final class Mesh {
     m.vertexCount = indices.length;
     return m;
   }
+}
+
+final class Room {
+
+  static final Mesh room = Mesh.load(Data.Room.vertices, Data.Room.indices, Data.Room.uvs);
+  static final Mesh box = Mesh.load(Data.Box.vertices, Data.Box.indices, Data.Box.uvs);
+  static final Mesh pyr = Mesh.load(Data.Pyramid.vertices, Data.Pyramid.indices, Data.Pyramid.uvs);
+
+  float x;
+  float y;
+  float z;
+
+  Room(float x0, float y0, float z0) {
+    x = x0;
+    y = y0;
+    z = z0;
+  }
+
+  List<Mesh> objs = new ArrayList<>();
+  List<Integer> objs_x = new ArrayList<>();
+  List<Integer> objs_y = new ArrayList<>();
+  List<Integer> objs_z = new ArrayList<>();
+
+  void render(float dx, float dy, float dz) {
+    dx += x;
+    dy += y;
+    dz += z;
+    room.render(dx, dy, dz);
+    for (int i = 0; i < objs.size(); i++) {
+      Shader.use(Mesh.shader);
+      Shader.load1f(Mesh.loc_base_z, Config.BASE_Z + objs_z.get(i));
+      objs.get(i).render(objs_x.get(i), objs_y.get(i), dx, dy, dz);
+    }
+    Shader.use(Mesh.shader);
+    Shader.load1f(Mesh.loc_base_z, Config.BASE_Z);
+  }
+
+  void addObj(Mesh m, int x, int y) {
+    addObj(m, x, y, 0);
+  }
+
+  void addObj(Mesh m, int x, int y, int z) {
+    objs.add(m);
+    objs_x.add(x);
+    objs_y.add(y);
+    objs_z.add(z);
+  }
+
+  void addBox(int x, int y) {
+    addObj(box, x, y);
+  }
+
+  void addPyr(int x, int y) {
+    addObj(pyr, x, y);
+  }
+
 }
 
 final class Input {
